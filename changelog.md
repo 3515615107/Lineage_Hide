@@ -1,5 +1,17 @@
 # 更新日志 / Changelog
 
+## 2.4
+
+### 中文
+
+- 文档明确说明 `service.sh` 去除 `userdebug` 调试构建信息需要解锁（可读写）system 分区，否则 `build.prop` 修改无效
+- 安装脚本优先复用已有的 `service_` 备份；仅在备份不存在时才卸载挂载点并复制当前 `service`
+
+### English
+
+- Documentation now states that `service.sh` removing `userdebug` debug build information requires an unlocked (writable) system partition; otherwise the `build.prop` change has no effect
+- The installer now prefers an existing `service_` backup and only unmounts the mount point and copies the current `service` when no backup exists
+
 ## 2.3
 
 ### 中文

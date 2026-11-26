@@ -160,7 +160,9 @@ After the boot animation starts, the module:
    `service_` next to the wrapper;
 3. rewrites `userdebug` to `user` in the `build.prop` files of `/system`,
    `/product/etc`, `/system_ext/etc` and `/system/system_dlkm/etc`, so the
-   device no longer advertises debug build information;
+   device no longer advertises debug build information.  **This requires the
+   system partition to be unlocked (writable); on a locked or read-only system
+   partition the rewrite has no effect**;
 4. spoofs bootloader and verified-boot properties: `ro.boot.flash.locked=1`,
    `ro.boot.verifiedbootstate=green`, `ro.boot.vbmeta.device_state=locked`,
    `ro.boot.vbmeta.avb_version`, `ro.boot.vbmeta.hash_alg`,
@@ -183,6 +185,11 @@ After the boot animation starts, the module:
 
 When SUSFS is provided as a kernel module (LKM), path/map registration uses
 `/proc/susfs_path` and `/proc/susfs_map` instead.
+
+> **Note:** Step 3 requires an unlocked (writable) system partition.  If the
+> partition stays locked or read-only, the `build.prop` debug-information
+> removal does not take effect, although the runtime property spoofing in
+> step 4 still applies.
 
 The `pm` and service wrappers only rewrite output for application processes
 (uid >= 10000); root/shell still sees the original output.  They are installed

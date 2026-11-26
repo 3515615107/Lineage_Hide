@@ -18,9 +18,14 @@ do
     chown "$(stat -c "%u:%g" "$i")" "$MODPATH$i"
     chcon "$(stat -c "%C" "$i")" "$MODPATH$i"
 done
+
 # There's a reason for that.
-umount "$i"
-cp -a "$i" "$MODPATH${i}_"
+if test -f "${i}_"; then
+    cp -a "${i}_" "$MODPATH${i}_"
+else
+    umount "$i"
+    cp -a "$i" "$MODPATH${i}_"
+fi
 
 ui_print "- Installation complete / 安装完成"
 ui_print "- All third-party applications are covered automatically / 已自动覆盖全部三方应用"

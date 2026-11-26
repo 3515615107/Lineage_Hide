@@ -149,7 +149,8 @@ SystemUI、Settings、权限控制器、核心 providers、核心服务与 `org.
    SELinux 上下文，并把原始 `service` 备份为同目录下的 `service_`；
 3. 把 `/system`、`/product/etc`、`/system_ext/etc`、
    `/system/system_dlkm/etc` 的 `build.prop` 中 `userdebug` 改写为 `user`，
-   不再暴露调试构建信息；
+   不再暴露调试构建信息。**此步骤要求 system 分区已解锁（可读写）；如果
+   system 分区仍处于锁定或只读状态，修改不会生效**；
 4. 伪装 bootloader / verified boot 状态：`ro.boot.flash.locked=1`、
    `ro.boot.verifiedbootstate=green`、`ro.boot.vbmeta.device_state=locked`、
    `ro.boot.vbmeta.*`，以及 `ro.debuggable=0`、`ro.force.debuggable=0`、
@@ -167,6 +168,10 @@ SystemUI、Settings、权限控制器、核心 providers、核心服务与 `org.
 
 SUSFS 以内核模块（LKM）方式提供时，path/map 注册改用 `/proc/susfs_path`
 与 `/proc/susfs_map`。
+
+> **注意：** 第 3 步要求 system 分区已解锁（可读写）。如果分区仍处于锁定或
+> 只读状态，`build.prop` 中的调试构建信息不会被去除，但第 4 步的运行时属性
+> 伪装仍然生效。
 
 `pm` 与 service 的 wrapper 只对应用进程（uid ≥ 10000）去特征，root/shell 仍得到
 原始输出。wrapper 以模块 `system/bin` 文件安装，本身不再需要重挂系统分区。
