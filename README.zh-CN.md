@@ -39,6 +39,10 @@ Lineage Hide 是一个 Zygisk 模块，用于隐藏 LineageOS / 自定义 ROM �
 
 - 理论上支持 LineageOS 23.2 及以上版本；
 - 测试通过：OnePlus 8T，LineageOS 24（Android 17）；
+- **本模块会修改 `/system`**：会在 `/system/bin` 下安装 `pm`/`service`
+  wrapper，并改写 `/system/build.prop`（以及 `/product/etc`、`/system_ext/etc`、
+  `/system/system_dlkm/etc`）中的 `userdebug`；使用元模块（MetaModule）时，
+  挂载模式建议选择 **VFS**；
 - 安装模块后如果暴露 `/system/bin/service` 或 `/system/bin/pm` 挂载点，需要
   安装元模块（MetaModule）：
   <https://kernelsu.org/guide/metamodule.html>；
@@ -185,8 +189,9 @@ scripts/patch-kernel.sh --revert /path/to/kernel # 撤销
 
 脚本写入 `include/linux/lineage_hide.h`，修改 `fs/proc/base.c` 的
 `do_proc_readlink()` 与 `fs/seq_file.c` 的 `seq_file_path()`，修改过的文件备份
-为 `*.lineage_hide.bak`。应用后需重新编译并刷入内核；补丁只改显示字符串，不影响
-文件访问与资源加载。
+为 `*.lineage_hide.bak`。它还会注释掉 `scripts/setlocalversion` 里的 `-dirty`
+后缀，避免本地修改状态通过 `uname -r` 暴露。应用后需重新编译并刷入内核；补丁
+只改显示字符串，不影响文件访问与资源加载。
 
 ## KernelSU SELinux 状态加固
 
@@ -308,7 +313,7 @@ module/                      Magisk/KernelSU 模块
     log.{h,cpp}              日志
 scripts/
   package.sh                 打包 Lineage_Hide.zip
-  patch-kernel.sh            内核 procfs 路径清洗补丁
+  patch-kernel.sh            内核 procfs 路径与 -dirty 后缀清理补丁
   selinux_hide_patch.sh      KernelSU selinux_hide 特权上下文探针防护
   verify_stealth.sh          ELF 符号与 /proc maps 辅助验证（开发用）
 images/                      README 截图（演示、配置）

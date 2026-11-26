@@ -40,6 +40,10 @@ fingerprints from applications.  Every third-party app is covered.
 
 - Theoretically supports LineageOS 23.2 and newer;
 - Tested on OnePlus 8T with LineageOS 24 (Android 17);
+- **This module modifies `/system`**: it installs the `pm`/`service` wrappers
+  under `/system/bin` and rewrites `userdebug` in `/system/build.prop` (also
+  `/product/etc`, `/system_ext/etc` and `/system/system_dlkm/etc`).  When using
+  the MetaModule, select **VFS** as its mount mode;
 - If the `/system/bin/service` or `/system/bin/pm` mount point is still
   exposed after installing the module, install the MetaModule:
   <https://kernelsu.org/guide/metamodule.html>;
@@ -207,8 +211,10 @@ scripts/patch-kernel.sh --revert /path/to/kernel # remove
 
 It writes `include/linux/lineage_hide.h`, edits `do_proc_readlink()` in
 `fs/proc/base.c` and `seq_file_path()` in `fs/seq_file.c`, and backs up edited
-files as `*.lineage_hide.bak`.  Rebuild and flash the kernel afterwards; only
-the displayed string changes, file access and resource loading are untouched.
+files as `*.lineage_hide.bak`.  It also comments out the `-dirty` suffix in
+`scripts/setlocalversion`, so a locally modified tree does not advertise that
+state through `uname -r`.  Rebuild and flash the kernel afterwards; only the
+displayed string changes, file access and resource loading are untouched.
 
 ## KernelSU selinux_hide hardening
 
@@ -324,7 +330,7 @@ module/                      Magisk/KernelSU module
     log.{h,cpp}              logging
 scripts/
   package.sh                 package Lineage_Hide.zip
-  patch-kernel.sh            kernel procfs path scrubbing patch
+  patch-kernel.sh            kernel procfs path and dirty-suffix scrubbing patch
   selinux_hide_patch.sh      KernelSU selinux_hide privileged-context probe guards
   verify_stealth.sh          ELF symbol and /proc maps helper checks (development)
 images/                      README screenshots (demo, settings)

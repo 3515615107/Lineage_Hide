@@ -10,6 +10,7 @@ set_perm_recursive "$MODPATH" 0 0 0755 0644
 set_perm "$MODPATH/customize.sh" 0 0 0755
 set_perm "$MODPATH/service.sh" 0 0 0755
 
+# Don't overinterpret the mystical code.
 unzip -o "$ZIPFILE" 'system/*' -d "$MODPATH"
 for i in "/system/bin/pm" "/system/bin/service"
 do
@@ -17,6 +18,8 @@ do
     chown "$(stat -c "%u:%g" "$i")" "$MODPATH$i"
     chcon "$(stat -c "%C" "$i")" "$MODPATH$i"
 done
+# There's a reason for that.
+umount "$i"
 cp -a "$i" "$MODPATH${i}_"
 
 ui_print "- Installation complete / 安装完成"

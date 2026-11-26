@@ -9,6 +9,10 @@
 #   - fs/seq_file.c:  seq_file_path()     -> /proc/<pid>/maps, smaps, numa_maps
 # Only the display string is rewritten in place; file access is not affected.
 #
+# It also suppresses the "-dirty" suffix that scripts/setlocalversion appends
+# when the kernel tree has uncommitted changes, so uname -r does not advertise
+# local modifications.
+#
 # The patcher is semantic (anchors on functions, not line numbers) and
 # idempotent, so it also works on trees with vendor or SUSFS modifications.
 # Edited files are backed up next to the originals as *.lineage_hide.bak.
@@ -21,7 +25,7 @@ usage() {
     cat <<'EOF'
 Usage: patch-kernel.sh [--check|--revert] <kernel-dir>
 
-  (no option)  apply the procfs ROM-name scrub and write the header
+  (no option)  apply the procfs scrub, dirty-suffix scrub and write the header
   --check      report whether the patch is fully applied; no changes
   --revert     remove the patch and the header
 
@@ -78,6 +82,7 @@ KDIR = sys.argv[2].rstrip("/")
 
 BASE = os.path.join(KDIR, "fs/proc/base.c")
 SEQ = os.path.join(KDIR, "fs/seq_file.c")
+SETLOCALVERSION = os.path.join(KDIR, "scripts/setlocalversion")
 HEADER = os.path.join(KDIR, "include/linux/lineage_hide.h")
 
 HEADER_TEXT = """/* SPDX-License-Identifier: GPL-2.0 */
@@ -157,6 +162,8 @@ SEQ_PATCHED = (
     "\n"
     "\treturn seq_path(m, &file->f_path, esc);\n"
 )
+SETLOCAL_ORIGINAL = "printf '%s' -dirty"
+SETLOCAL_PATCHED = ": " + SETLOCAL_ORIGINAL
 
 
 def read(path):
@@ -172,9 +179,12 @@ def backup(path):
 
 def write(path, text):
     backup(path)
+    mode = os.stat(path).st_mode & 0o7777 if os.path.exists(path) else None
     tmp = path + ".lineage_hide.tmp"
     with open(tmp, "w", encoding="utf-8", errors="surrogateescape") as fh:
         fh.write(text)
+    if mode is not None:
+        os.chmod(tmp, mode)
     os.replace(tmp, path)
 
 
@@ -298,6 +308,40 @@ def plan_seq_revert(text):
     return remove_include(text, SEQ_INCLUDE), "reverted"
 
 
+def setlocalversion_counts(text):
+    bare = len(re.findall(r"(?<!: )" + re.escape(SETLOCAL_ORIGINAL), text))
+    return bare, text.count(SETLOCAL_PATCHED)
+
+
+def plan_setlocalversion_apply(text):
+    bare, patched = setlocalversion_counts(text)
+    if bare == 0 and patched:
+        return text, "already applied"
+    if bare == 0 and patched == 0:
+        raise RuntimeError(
+            "scripts/setlocalversion has no dirty-suffix marker; this kernel layout is not supported"
+        )
+    if patched:
+        raise RuntimeError(
+            "scripts/setlocalversion looks partially patched; clean or revert it first"
+        )
+    text, count = re.subn(
+        r"(?<!: )" + re.escape(SETLOCAL_ORIGINAL),
+        SETLOCAL_PATCHED,
+        text,
+    )
+    if not count:
+        raise RuntimeError("failed to patch scripts/setlocalversion")
+    return text, "patched"
+
+
+def plan_setlocalversion_revert(text):
+    _, patched = setlocalversion_counts(text)
+    if not patched:
+        return text, "not applied"
+    return text.replace(SETLOCAL_PATCHED, SETLOCAL_ORIGINAL), "reverted"
+
+
 def header_state():
     if not os.path.exists(HEADER):
         return "missing"
@@ -306,40 +350,52 @@ def header_state():
 
 results = []
 try:
-    for path in (BASE, SEQ):
+    for path in (BASE, SEQ, SETLOCALVERSION):
         if not os.path.isfile(path):
             raise RuntimeError("%s is missing" % os.path.relpath(path, KDIR))
     base_text = read(BASE)
     seq_text = read(SEQ)
+    setlocalversion_text = read(SETLOCALVERSION)
 
     if MODE == "apply":
         new_base, status_base = plan_base_apply(base_text)
         new_seq, status_seq = plan_seq_apply(seq_text)
+        new_setlocalversion, status_setlocalversion = plan_setlocalversion_apply(
+            setlocalversion_text
+        )
         status_header = header_state()
         if (
             status_base == "already applied"
             and status_seq == "already applied"
+            and status_setlocalversion == "already applied"
             and status_header == "current"
         ):
             print("already applied; nothing to do")
             sys.exit(0)
         write(BASE, new_base)
         write(SEQ, new_seq)
+        if status_setlocalversion == "patched":
+            write(SETLOCALVERSION, new_setlocalversion)
         if status_header != "current":
             write(HEADER, HEADER_TEXT)
             status_header = "written"
         results = [
             ("fs/proc/base.c", status_base),
             ("fs/seq_file.c", status_seq),
+            ("scripts/setlocalversion", status_setlocalversion),
             ("include/linux/lineage_hide.h", status_header),
         ]
     elif MODE == "revert":
         new_base, status_base = plan_base_revert(base_text)
         new_seq, status_seq = plan_seq_revert(seq_text)
+        new_setlocalversion, status_setlocalversion = plan_setlocalversion_revert(
+            setlocalversion_text
+        )
         status_header = header_state()
         if (
             status_base == "not applied"
             and status_seq == "not applied"
+            and status_setlocalversion == "not applied"
             and status_header == "missing"
         ):
             print("not applied; nothing to do")
@@ -348,20 +404,25 @@ try:
             write(BASE, new_base)
         if status_seq == "reverted":
             write(SEQ, new_seq)
+        if status_setlocalversion == "reverted":
+            write(SETLOCALVERSION, new_setlocalversion)
         if status_header != "missing":
             os.remove(HEADER)
         results = [
             ("fs/proc/base.c", status_base),
             ("fs/seq_file.c", status_seq),
+            ("scripts/setlocalversion", status_setlocalversion),
             ("include/linux/lineage_hide.h", "removed" if status_header != "missing" else "missing"),
         ]
     elif MODE == "check":
         _, status_base = plan_base_apply(base_text)
         _, status_seq = plan_seq_apply(seq_text)
+        _, status_setlocalversion = plan_setlocalversion_apply(setlocalversion_text)
         status_header = header_state()
         results = [
             ("fs/proc/base.c", status_base),
             ("fs/seq_file.c", status_seq),
+            ("scripts/setlocalversion", status_setlocalversion),
             ("include/linux/lineage_hide.h", status_header),
         ]
         print("check %s" % KDIR)
@@ -370,6 +431,7 @@ try:
         if (
             status_base == "already applied"
             and status_seq == "already applied"
+            and status_setlocalversion == "already applied"
             and status_header == "current"
         ):
             print("result: fully applied")

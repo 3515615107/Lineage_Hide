@@ -1,6 +1,6 @@
 #!/system/bin/sh
 
-resetprop -w init.svc.bootanim running
+resetprop -w init.svc.bootanim "running"
 
 [ $(realpath "/proc/$$/exe") != "/system/bin/sh" ] && exec "/system/bin/sh" "$0"
 
@@ -14,11 +14,11 @@ done
 
 resetprop -w sys.boot_completed 0
 
-pm disable org.lineageos.jelly
+pm disable "org.lineageos.jelly"
 
 pm list packages -s | sed 's/^package://' | sort -u > "${0%/*}/system_packages.txt"
 
-resetprop -w sys.user.0.ce_available false
+resetprop -w sys.user.0.ce_available "false"
 until [ -d "/sdcard/Android" ]
 do
     sleep 1

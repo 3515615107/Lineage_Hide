@@ -1,5 +1,21 @@
 # 更新日志 / Changelog
 
+## 2.3
+
+### 中文
+
+- `patch-kernel.sh` 新增 `scripts/setlocalversion` 补丁，隐藏 Git/Mercurial 工作区状态产生的 `-dirty` 内核版本后缀
+- 安装脚本在备份原始 `service` 前先卸载已有的 `/system/bin/service` 挂载点，避免备份到旧 wrapper
+- 文档明确说明模块会修改 `/system`，使用元模块（MetaModule）时推荐 **VFS** 挂载模式
+- `service.sh` 中的属性与包名参数统一加引号
+
+### English
+
+- `patch-kernel.sh` now patches `scripts/setlocalversion` to suppress the `-dirty` kernel version suffix produced by Git/Mercurial working-tree state
+- The installer unmounts an existing `/system/bin/service` mount before backing up the original binary, preventing a stale wrapper from being saved
+- Documentation now states that the module modifies `/system` and recommends the **VFS** mount mode when using the MetaModule
+- Quoted property and package arguments in `service.sh`
+
 ## 2.2
 
 ### 中文
