@@ -1,5 +1,21 @@
 # 更新日志 / Changelog
 
+## 2.2
+
+### 中文
+
+- `pm`/`service` 伪装改为模块内置的 `system/bin` wrapper；安装时继承系统文件的权限、属主与 SELinux 上下文，并准备原始 `service` 备份
+- `service.sh` 移除写 `/data/system` 与 bind mount 的逻辑，改用 `resetprop -w sys.user.0.ce_available false` 等待 CE 存储
+- `selinux_hide_patch.sh` 恢复 `--check`/`--revert` 与源码树参数，保留固定补丁并增加 Kbuild `-dirty` 清理
+- 打包流程纳入 `system/` wrapper；同步 README、版本号与更新清单
+
+### English
+
+- `pm`/`service` hiding now uses module-provided `system/bin` wrappers; the installer inherits the system files' permissions, ownership and SELinux context, and prepares a backup of the original `service`
+- `service.sh` no longer writes to `/data/system` or bind-mounts wrappers; it waits for CE storage with `resetprop -w sys.user.0.ce_available false`
+- `selinux_hide_patch.sh` restores `--check`/`--revert` and the source-tree argument, keeps the pinned patch, and clears the Kbuild `-dirty` suffix
+- Packaging now includes the `system/` wrappers; README, version and update manifest are in sync
+
 ## 2.1
 
 ### 中文
@@ -82,13 +98,13 @@
 
 ### 中文
 
-- 作者署名更新为 GitHub@null07089
+- 作者署名更新为 GitHub@3515615107
 - `service.sh` 改用系统提供的 `ksu_susfs`，不再随模块分发二进制
 - 注册流程加入 3 秒缓冲；README 精简
 
 ### English
 
-- Updated the author credit to GitHub@null07089
+- Updated the author credit to GitHub@3515615107
 - `service.sh` now uses the system-provided `ksu_susfs` instead of shipping its own binary
 - Added a 3-second buffer to the registration flow; trimmed the README
 

@@ -21,7 +21,7 @@ reports can expose users before a fix is available.
 
 Use GitHub private vulnerability reporting:
 
-<https://github.com/null07089/Lineage_Hide/security/advisories/new>
+<https://github.com/3515615107/Lineage_Hide/security/advisories/new>
 
 If private reporting is unavailable, open a minimal public issue asking for a
 private contact channel. Do not include vulnerability details in that issue.

@@ -142,21 +142,18 @@ To exclude an app, freeze it from the module by adding its package to
 
 After the boot animation starts, the module:
 
-1. hides the `pm` command: a wrapper is written to `/data/system/pm` and
-   bind-mounted over `/system/bin/pm` in init's mount namespace with
-   `nsenter -m -t 1`.  The wrapper forwards calls to `cmd package` and, for
-   application processes (uid >= 10000), rewrites `lineage` → `lineagx` and
-   `Lineage` → `Lineagx` in the output;
-2. hides the service list.  On a OnePlus 8T (`ro.product.model=KB2000`) it
-   remounts `/` read-write, backs up `/system/bin/service` as `service_` and
-   writes a wrapper whose `service list` output is a fixed 392-entry list.  On
-   every other device, or when the OnePlus path fails, it leaves the system
-   partition untouched: the original is copied to `/data/system/service_`, the
-   wrapper is written to `/data/system/service`, and the wrapper is
-   bind-mounted over `/system/bin/service` in init's mount namespace with
-   `nsenter -m -t 1`.  The OnePlus wrapper filters non-`list` output; the
-   generic wrapper filters all output, both with the length-preserving
-   `lineage` → `lineagx` rewrite;
+1. overrides `pm`: the module ships `system/bin/pm`, which forwards calls to
+   `cmd package` and, for application processes (uid >= 10000), rewrites
+   `lineage` → `lineagx` and `Lineage` → `Lineagx` in the output;
+2. overrides `service`: the module ships `system/bin/service`.  On a OnePlus 8T
+   (`ro.product.model=KB2000`) an application's `service list` call receives a
+   fixed 392-entry list; other calls delegate to the original service binary
+   and apply the same length-preserving rewrite.  On every other device all
+   application calls are proxied and rewritten.  The wrappers are ordinary
+   module files, so the system partition is never remounted for them; the
+   installer copies the permission bits, ownership and SELinux context from the
+   matching `/system/bin` files and snapshots the original `service` binary as
+   `service_` next to the wrapper;
 3. rewrites `userdebug` to `user` in the `build.prop` files of `/system`,
    `/product/etc`, `/system_ext/etc` and `/system/system_dlkm/etc`, so the
    device no longer advertises debug build information;
@@ -184,9 +181,9 @@ When SUSFS is provided as a kernel module (LKM), path/map registration uses
 `/proc/susfs_path` and `/proc/susfs_map` instead.
 
 The `pm` and service wrappers only rewrite output for application processes
-(uid >= 10000); root/shell still sees the original output.  The service-list
-step writes to the system partition only on OnePlus 8T; the generic bind-mount
-path never touches it.  Step 3 remounts each affected filesystem read-write and
+(uid >= 10000); root/shell still sees the original output.  They are installed
+as module `system/bin` files, so the wrappers themselves never require a system
+partition remount.  Step 3 remounts each affected filesystem read-write and
 restores it read-only; where the filesystem cannot be remounted, the file edit
 has no effect, but the property spoofing in step 4 still covers the runtime
 values applications read.  Every step is idempotent and safe to repeat on the
@@ -218,9 +215,10 @@ the displayed string changes, file access and resource loading are untouched.
 `scripts/selinux_hide_patch.sh` hardens KernelSU's `selinux_hide` feature, the
 code that answers application selinuxfs queries from the policy copy captured
 at boot instead of the running (KernelSU-modified) policy.  With the feature
-enabled, the patcher adds three guards to `kernel/feature/selinux_hide.c` so
-the fallbacks return `-EINVAL` for privileged contexts when the caller is an
-application (uid >= 10000), instead of validating them:
+enabled, the patcher adds three guards to
+`kernel/feature/selinux_hide/selinux_hide_auto.c` so the fallbacks return
+`-EINVAL` for privileged contexts when the caller is an application
+(uid >= 10000), instead of validating them:
 
 - `my_write_context()` (`/sys/fs/selinux/context`) rejects `u:r:adbroot:s0`;
 - `my_write_access()` (`/sys/fs/selinux/access`) rejects `u:r:shell:s0` +
@@ -232,8 +230,9 @@ These probes are used by environment detectors to confirm privileged domains
 negative no matter which policy the kernel really runs.  Root and shell
 processes are not affected.
 
-Like `patch-kernel.sh` the patcher is semantic (function anchors, not line
-numbers) and idempotent:
+The patcher applies a pinned contextual patch, also keeps the KSU commit SHA
+free of the `-dirty` suffix, and is idempotent: applying it twice reports
+“already applied”, and `--check`/`--revert` are available for automation:
 
 ```bash
 scripts/selinux_hide_patch.sh /path/to/kernel          # apply
@@ -242,9 +241,8 @@ scripts/selinux_hide_patch.sh --revert /path/to/kernel # remove
 ```
 
 `<tree>` is the kernel source root (KernelSU cloned at `KernelSU/` and
-symlinked as `drivers/kernelsu`) or the KernelSU repo root itself.  The edited
-`kernel/feature/selinux_hide.c` is backed up as `*.selinux_hide.bak`; rebuild
-and flash the kernel afterwards.
+symlinked as `drivers/kernelsu`) or the KernelSU repo root itself.  Edited files
+are backed up as `*.selinux_hide.bak`; rebuild and flash the kernel afterwards.
 
 ## Build
 
@@ -310,8 +308,10 @@ Quick checks; the detailed checklist is in
 ```
 module/                      Magisk/KernelSU module
   module.prop                module identity (id=lineage_hide)
-  service.sh                 boot: pm/service scrubbing + bootloader spoofing + system package list + ksu_susfs registration
-  customize.sh               installer (permissions)
+  service.sh                 boot: bootloader spoofing + system package list + ksu_susfs registration
+  customize.sh               installer (wrapper permissions and service backup)
+  system/bin/pm              pm wrapper (application output scrubbing)
+  system/bin/service         service wrapper (OnePlus 8T static list + output scrubbing)
   src/main/cpp/              Zygisk native code
     entry.cpp                injection decision (uid + system package list) and specialization entry
     binder_hook.{h,cpp}      ServiceManager BinderProxy JNI hook and filtering
@@ -332,7 +332,7 @@ images/                      README screenshots (demo, settings)
 
 ## License
 
-Copyright (C) 2026 GitHub@null07089.
+Copyright (C) 2026 GitHub@3515615107.
 
 This project is licensed under the GNU General Public License v3.0; see
 [LICENSE](LICENSE).

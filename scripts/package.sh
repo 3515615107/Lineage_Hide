@@ -32,7 +32,12 @@ mkdir -p "$STAGE/zygisk" "$OUT_DIR"
 cp "$ROOT_DIR/module/module.prop" "$STAGE/module.prop"
 cp "$ROOT_DIR/module/service.sh" "$STAGE/service.sh"
 cp "$ROOT_DIR/module/customize.sh" "$STAGE/customize.sh"
+cp -a "$ROOT_DIR/module/system" "$STAGE/system"
 chmod 0755 "$STAGE/service.sh" "$STAGE/customize.sh"
+chmod 0755 "$STAGE/system/bin/pm" "$STAGE/system/bin/service"
+
+test -f "$STAGE/system/bin/pm"
+test -f "$STAGE/system/bin/service"
 
 NATIVE_LIBRARY="$(find_native_library || true)"
 if [ -z "$NATIVE_LIBRARY" ]; then

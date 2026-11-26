@@ -134,21 +134,15 @@ SystemUI、Settings、权限控制器、核心 providers、核心服务与 `org.
 
 开机动画启动后，模块会：
 
-1. 隐藏 `pm` 命令探测：wrapper 写到 `/data/system/pm`，再用
-   `nsenter -m -t 1` 在 init mount namespace 里 bind mount 到
-   `/system/bin/pm`；wrapper 把调用转给 `cmd package`，对应用
+1. 覆盖 `pm`：模块内置 `system/bin/pm`，把调用转给 `cmd package`；对应用
    进程（uid ≥ 10000）的输出做等长 `lineage` → `lineagx`、
    `Lineage` → `Lineagx` 改写；
-2. 隐藏 service 列表：
-   - OnePlus 8T（`ro.product.model=KB2000`）把 `/` 重挂为可写，备份
-     `/system/bin/service` 为 `service_`，写入一个对 `service list` 返回
-     392 项定制静态列表的 wrapper；
-   - 其余机型（或 8T 写入失败时）不改系统分区：把原文件备份到
-     `/data/system/service_`，wrapper 写到 `/data/system/service`，再用
-     `nsenter -m -t 1` 在 init mount namespace 里 bind mount 到
-     `/system/bin/service`；
-   - 8T wrapper 对非 `list` 调用、通用 wrapper 对所有输出做等长
-     `lineage` → `lineagx` 改写；
+2. 覆盖 `service`：模块内置 `system/bin/service`。OnePlus 8T
+   （`ro.product.model=KB2000`）上，应用调用 `service list` 会得到固定的
+   392 项列表；其他调用转给原始 service 二进制并做同样的等长改写。其余机型
+   上所有应用调用都会经过代理和改写。wrapper 作为普通模块文件安装，因此不再
+   为它们重挂系统分区；安装器会复制对应 `/system/bin` 文件的权限位、属主和
+   SELinux 上下文，并把原始 `service` 备份为同目录下的 `service_`；
 3. 把 `/system`、`/product/etc`、`/system_ext/etc`、
    `/system/system_dlkm/etc` 的 `build.prop` 中 `userdebug` 改写为 `user`，
    不再暴露调试构建信息；
@@ -171,10 +165,10 @@ SUSFS 以内核模块（LKM）方式提供时，path/map 注册改用 `/proc/sus
 与 `/proc/susfs_map`。
 
 `pm` 与 service 的 wrapper 只对应用进程（uid ≥ 10000）去特征，root/shell 仍得到
-原始输出。service 列表步骤只有 OnePlus 8T 会重挂并写入系统分区；通用 bind mount
-分支不修改系统分区。第 3 步会重挂对应分区并在完成后挂回只读，无法重挂时文件改写
-不生效，但第 4 步的属性伪装仍能覆盖应用运行时读到的值。所有步骤都是幂等的，
-重启重复执行没有副作用。与进程内钩子不同，属性改写和 SUSFS 注册是全局生效的。
+原始输出。wrapper 以模块 `system/bin` 文件安装，本身不再需要重挂系统分区。
+第 3 步会重挂对应分区并在完成后挂回只读，无法重挂时文件改写不生效，但第 4 步的
+属性伪装仍能覆盖应用运行时读到的值。所有步骤都是幂等的，重启重复执行没有副作用。
+与进程内钩子不同，属性改写和 SUSFS 注册是全局生效的。
 
 ## 内核侧路径隐藏
 
@@ -198,9 +192,9 @@ scripts/patch-kernel.sh --revert /path/to/kernel # 撤销
 
 `scripts/selinux_hide_patch.sh` 加固 KernelSU 的 `selinux_hide` 特性：该特性
 代替当前（被 KernelSU 修改过的）策略，用开机时留存的策略副本来回答应用的
-selinuxfs 查询。在特性开启的前提下，脚本在 `kernel/feature/selinux_hide.c`
-中加三处守卫，使这些回退路径对应用进程（uid ≥ 10000）直接返回 `-EINVAL`，
-不再验证以下特权上下文：
+selinuxfs 查询。在特性开启的前提下，脚本在
+`kernel/feature/selinux_hide/selinux_hide_auto.c` 中加三处守卫，使这些回退
+路径对应用进程（uid ≥ 10000）直接返回 `-EINVAL`，不再验证以下特权上下文：
 
 - `my_write_context()`（`/sys/fs/selinux/context`）拒绝 `u:r:adbroot:s0`；
 - `my_write_access()`（`/sys/fs/selinux/access`）拒绝 `u:r:shell:s0` +
@@ -211,7 +205,9 @@ selinuxfs 查询。在特性开启的前提下，脚本在 `kernel/feature/selin
 特权域；拒绝后无论内核实际运行哪份策略，探针都无法得到肯定结果。root/shell
 进程（uid < 10000）不受影响。
 
-与 `patch-kernel.sh` 相同，脚本按函数语义定位（不依赖行号）且幂等：
+脚本应用一份固定的上下文补丁，同时去掉 KSU commit SHA 的 `-dirty` 后缀，并且
+幂等：重复应用会提示 “already applied”，并保留 `--check`/`--revert` 供自动化
+使用：
 
 ```bash
 scripts/selinux_hide_patch.sh /path/to/kernel          # 应用
@@ -220,9 +216,8 @@ scripts/selinux_hide_patch.sh --revert /path/to/kernel # 撤销
 ```
 
 `<tree>` 为内核源码根目录（KernelSU 克隆在 `KernelSU/` 并软链为
-`drivers/kernelsu`）或 KernelSU 仓库根目录。修改后的
-`kernel/feature/selinux_hide.c` 备份为 `*.selinux_hide.bak`；应用后需重新编译
-并刷入内核。
+`drivers/kernelsu`）或 KernelSU 仓库根目录。修改过的文件备份为
+`*.selinux_hide.bak`；应用后需重新编译并刷入内核。
 
 ## 构建与发布
 
@@ -297,8 +292,10 @@ bash scripts/package.sh
 ```
 module/                      Magisk/KernelSU 模块
   module.prop                模块标识（id=lineage_hide）
-  service.sh                 开机：pm/service 去特征 + bootloader 属性伪装 + 系统包清单 + ksu_susfs 注册
-  customize.sh               安装脚本（权限）
+  service.sh                 开机：bootloader 属性伪装 + 系统包清单 + ksu_susfs 注册
+  customize.sh               安装脚本（wrapper 权限与 service 备份）
+  system/bin/pm              pm wrapper（应用输出去特征）
+  system/bin/service         service wrapper（OnePlus 8T 静态列表 + 输出去特征）
   src/main/cpp/              Zygisk native 代码
     entry.cpp                注入判定（uid + 系统包清单）与 specialization 入口
     binder_hook.{h,cpp}      ServiceManager BinderProxy JNI 钩子与过滤
@@ -319,6 +316,6 @@ images/                      README 截图（演示、配置）
 
 ## 许可证
 
-Copyright (C) 2026 GitHub@null07089。
+Copyright (C) 2026 GitHub@3515615107。
 
 本项目以 GNU General Public License v3.0 发布，详见 [LICENSE](LICENSE)。

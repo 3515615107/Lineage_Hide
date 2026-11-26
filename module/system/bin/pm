@@ -1,0 +1,4 @@
+#!/system/bin/sh
+set -o "pipefail"
+[ $(exec "/system/bin/id" -u) -lt 10000 ] && exec "/system/bin/cmd" package "$@"
+exec "/system/bin/cmd" package "$@" | exec "/system/bin/sed" "s/lineage/lineagx/g; s/Lineage/Lineagx/g"
